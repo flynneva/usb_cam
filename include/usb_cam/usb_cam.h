@@ -53,6 +53,7 @@ extern "C"
 #endif
 
 #include <builtin_interfaces/msg/time.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <rclcpp/time.hpp>
 // #include <sensor_msgs/msg/image.h>
 #include <string>

@@ -100,10 +100,11 @@ static int xioctl(int fd, int request, void * arg)
 {
   int r;
 
-  do
+  do {
     r = ioctl(fd, request, arg);
-  while (-1 == r && EINTR == errno)
-    continue
+    continue;
+  } while (-1 == r && EINTR == errno);
+  
   return r;
 }
 
@@ -307,9 +308,9 @@ static unsigned char CLIPVALUE(int val)
 static bool YUV2RGB(const unsigned char y, const unsigned char u, const unsigned char v,
                     unsigned char* r, unsigned char* g, unsigned char* b)
 {
-  const int y2 = static_cast<int>y;
-  const int u2 = static_cast<int>u - 128;
-  const int v2 = static_cast<int>v - 128;
+  const int y2 = static_cast<int>(y);
+  const int u2 = static_cast<int>(u - 128);
+  const int v2 = static_cast<int>(v - 128);
   // std::cerr << "YUV=("<<y2<<","<<u2<<","<<v2<<")"<<std::endl;
 
   // This is the normal YUV conversion, but
@@ -425,7 +426,7 @@ int UsbCam::init_mjpeg_decoder(int image_width, int image_height)
   avframe_rgb_ = av_frame_alloc();
 #endif
 
-  avpicture_alloc(reinterpret_cast<AVPicture *>avframe_rgb_,
+  avpicture_alloc(reinterpret_cast<AVPicture *>(avframe_rgb_),
                     AV_PIX_FMT_RGB24, image_width, image_height);
 
   avcodec_context_->codec_id = AV_CODEC_ID_MJPEG;
@@ -479,7 +480,7 @@ bool UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
   }
 #else
   avcodec_decode_video(avcodec_context_, avframe_camera_, &got_picture,
-                       reinterpret_cast<uint8_t *> MJPEG, len);
+                       reinterpret_cast<uint8_t *>(MJPEG), len);
 #endif
 
   if (!got_picture)
@@ -513,8 +514,8 @@ bool UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
   sws_freeContext(video_sws_);
   #endif
 
-  int size = avpicture_layout(reinterpret_cast<AVPicture *> avframe_rgb_, AV_PIX_FMT_RGB24,
-                                xsize, ysize, reinterpret_cast<uint8_t *> RGB, avframe_rgb_size_);
+  int size = avpicture_layout(reinterpret_cast<AVPicture *>(avframe_rgb_), AV_PIX_FMT_RGB24,
+                                xsize, ysize, reinterpret_cast<uint8_t *>(RGB), avframe_rgb_size_);
   if (size != avframe_rgb_size_)
   {
     ROS_ERROR("webcam: avpicture_layout error: %d", size);
@@ -532,18 +533,18 @@ bool UsbCam::process_image(const void * src, int len, camera_image_t *dest)
     {
       // actually format V4L2_PIX_FMT_Y16, but xioctl gets unhappy
       // if you don't use the advertised type (yuyv)
-      mono102mono8(reinterpret_cast<char*> src, dest->image, dest->width * dest->height);
+      mono102mono8(const_cast<char *>(reinterpret_cast<const char *>(src)), dest->image, dest->width * dest->height);
     } else {
-      yuyv2rgb(reinterpret_cast<char *> src, dest->image, dest->width * dest->height);
+      yuyv2rgb(const_cast<char *>(reinterpret_cast<const char *>(src)), dest->image, dest->width * dest->height);
     }
   } else if (pixelformat_ == V4L2_PIX_FMT_UYVY) {
-    uyvy2rgb(reinterpret_cast<char *> src, dest->image, dest->width * dest->height);
+    uyvy2rgb(const_cast<char *>(reinterpret_cast<const char *>(src)), dest->image, dest->width * dest->height);
   } else if (pixelformat_ == V4L2_PIX_FMT_MJPEG) {
-    return mjpeg2rgb(reinterpret_cast<char *> src, len, dest->image, dest->width * dest->height);
+    return mjpeg2rgb(const_cast<char *>(reinterpret_cast<const char *>(src)), len, dest->image, dest->width * dest->height);
   } else if (pixelformat_ == V4L2_PIX_FMT_RGB24) {
-    rgb242rgb(reinterpret_cast<char *> src, dest->image, dest->width * dest->height);
+    rgb242rgb(const_cast<char *>(reinterpret_cast<const char *>(src)), dest->image, dest->width * dest->height);
   } else if (pixelformat_ == V4L2_PIX_FMT_GREY) {
-    memcpy(dest->image, reinterpret_cast<char *>src, dest->width * dest->height);
+    memcpy(dest->image, const_cast<char *>(reinterpret_cast<const char *>(src)), dest->width * dest->height);
   }
 
   return true;;
@@ -660,13 +661,13 @@ bool UsbCam::read_frame()
       stamp.nanosec = real_time.tv_nsec;
 
       for (i = 0; i < n_buffers_; ++i)
-        if (buf.m.userptr == reinterpret_cast<uint64_t> buffers_[i].start \
+        if (buf.m.userptr == reinterpret_cast<uint64_t>(buffers_[i].start) \
             && buf.length == buffers_[i].length)
           break;
 
       assert(i < n_buffers_);
       len = buf.bytesused;
-      if (!process_image(reinterpret_cast<void *> buf.m.userptr, len, image_))
+      if (!process_image(reinterpret_cast<const void *>(buf.m.userptr), len, image_))
         return false;
 
       if (-1 == xioctl(fd_, VIDIOC_QBUF, &buf)) {
@@ -761,7 +762,7 @@ bool UsbCam::start_capturing(void)
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = V4L2_MEMORY_USERPTR;
         buf.index = i;
-        buf.m.userptr = reinterpret_cast<uint64_t> buffers_[i].start;
+        buf.m.userptr = reinterpret_cast<uint64_t>(buffers_[i].start);
         buf.length = buffers_[i].length;
 
         if (-1 == xioctl(fd_, VIDIOC_QBUF, &buf)) {
@@ -813,7 +814,7 @@ bool UsbCam::uninit_device(void)
 
 bool UsbCam::init_read(unsigned int buffer_size)
 {
-  buffers_ = reinterpret_cast<buffer *> calloc(1, sizeof(*buffers_));
+  buffers_ = reinterpret_cast<buffer *>(calloc(1, sizeof(*buffers_)));
 
   if (!buffers_)
   {
@@ -860,7 +861,7 @@ bool UsbCam::init_mmap(void)
     return false;
   }
 
-  buffers_ = reinterpret_cast<buffer *> calloc(req.count, sizeof(*buffers_));
+  buffers_ = reinterpret_cast<buffer *>(calloc(req.count, sizeof(*buffers_)));
 
   if (!buffers_)
   {
@@ -923,7 +924,7 @@ bool UsbCam::init_userp(unsigned int buffer_size)
     }
   }
 
-  buffers_ = reinterpret_cast<buffer *>calloc(4, sizeof(*buffers_));
+  buffers_ = reinterpret_cast<buffer *>(calloc(4, sizeof(*buffers_)));
 
   if (!buffers_)
   {
@@ -1174,7 +1175,7 @@ bool UsbCam::start(const std::string& dev, io_method io_method, pixel_format pix
     return false;
   }
 
-  image_ = reinterpret_cast<camera_image_t *> calloc(1, sizeof(camera_image_t));
+  image_ = reinterpret_cast<camera_image_t *>(calloc(1, sizeof(camera_image_t)));
 
   image_->width = image_width;
   image_->height = image_height;
@@ -1182,8 +1183,8 @@ bool UsbCam::start(const std::string& dev, io_method io_method, pixel_format pix
 
   image_->image_size = image_->width * image_->height * image_->bytes_per_pixel;
   image_->is_new = 0;
-  image_->image = reinterpret_cast<char *> calloc(image_->image_size, sizeof(char *);
-  memset(image_->image, 0, image_->image_size * sizeof(char *);
+  image_->image = reinterpret_cast<char *>(calloc(image_->image_size, sizeof(char *)));
+  memset(image_->image, 0, image_->image_size * sizeof(char *));
   return true;
 }
 
@@ -1426,8 +1427,6 @@ UsbCam::pixel_format UsbCam::pixel_format_from_string(const std::string& str)
     else
       return PIXEL_FORMAT_UNKNOWN;
 }
-}  // namespace usb_cam
-
 #if 0
 std::string UsbCam::pixel_format_to_string(__u32 pixelformat)
 {
